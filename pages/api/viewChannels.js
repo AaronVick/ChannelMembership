@@ -1,15 +1,18 @@
 import fetch from 'node-fetch';
 
-// Create an in-memory cache to store session data
+// In-memory cache for the session data
 const cache = new Map();
 
 // Helper function to introduce a delay
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+// Function to fetch the channels the user follows
 export default async function handler(req, res) {
   console.log('Channels Web Viewer accessed');
 
-  const { fid } = req.query;
+  const { fid, cursor } = req.query;
+  const limit = 50; // Limit to avoid API rate limiting and timeout
+  const start = cursor ? parseInt(cursor, 10) : 0; // Handle pagination with cursor
 
   // Validate that fid is provided
   if (!fid) {
@@ -18,17 +21,16 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Fetch channels with caching mechanism
-    console.log(`Fetching channels followed by FID: ${fid}`);
-    const channels = await fetchChannelsForFidWithCache(fid);
+    // Fetch channels followed by the given FID and limit the number of API requests
+    console.log(`Fetching channels followed by FID: ${fid}, start: ${start}`);
+    const channels = await fetchChannelsForFidWithCache(fid, limit, start);
 
     if (!channels || channels.length === 0) {
       console.error('No channels found for this FID.');
       return res.status(404).json({ error: 'No channels found for the given FID.' });
     }
 
-    // Check if the user is a member of each channel
-    console.log(`Checking membership for FID: ${fid}`);
+    // Check membership for a limited number of channels
     const membershipInfo = await Promise.all(
       channels.map(async (channel) => {
         const isMember = await checkMembershipStatus(fid, channel.id);
@@ -36,10 +38,10 @@ export default async function handler(req, res) {
       })
     );
 
-    // Sort channels by membership status (members first)
+    // Sort channels by membership status
     const sortedChannels = membershipInfo.sort((a, b) => (b.isMember ? 1 : 0) - (a.isMember ? 1 : 0));
 
-    // Build the HTML content with a nice layout
+    // Generate HTML response
     const channelsList = sortedChannels
       .map((channel) => `
         <div class="channel-card">
@@ -52,6 +54,8 @@ export default async function handler(req, res) {
         <hr/>
       `)
       .join('');
+
+    const nextCursor = start + limit;
 
     const html = `
       <!DOCTYPE html>
@@ -92,6 +96,7 @@ export default async function handler(req, res) {
         <div class="channel-list">
           ${channelsList}
         </div>
+        ${channels.length >= limit ? `<a href="/api/viewChannels?fid=${fid}&cursor=${nextCursor}">Next Page</a>` : ''}
       </body>
       </html>
     `;
@@ -104,8 +109,8 @@ export default async function handler(req, res) {
   }
 }
 
-// Fetch channels followed by the given FID, with caching
-async function fetchChannelsForFidWithCache(fid) {
+// Fetch channels followed by the given FID with caching and pagination
+async function fetchChannelsForFidWithCache(fid, limit, start) {
   // Check if data is in the cache and hasn't expired
   if (cache.has(fid)) {
     const cachedData = cache.get(fid);
@@ -114,7 +119,7 @@ async function fetchChannelsForFidWithCache(fid) {
     // If cache is less than 5 minutes old, return it
     if (now - cachedData.timestamp < 5 * 60 * 1000) {
       console.log(`Returning cached data for FID: ${fid}`);
-      return cachedData.channels;
+      return cachedData.channels.slice(start, start + limit);
     }
 
     // If cache is expired, remove it
@@ -128,12 +133,7 @@ async function fetchChannelsForFidWithCache(fid) {
 
   try {
     do {
-      let url = `https://api.warpcast.com/v1/user-following-channels?fid=${fid}`;
-      
-      // If there's a cursor, fetch the next page
-      if (nextCursor) {
-        url += `&cursor=${nextCursor}`;
-      }
+      let url = `https://api.warpcast.com/v1/user-following-channels?fid=${fid}&limit=${limit}&start=${start}`;
 
       console.log(`Making request to Farcaster API: ${url}`);
 
@@ -171,7 +171,7 @@ async function fetchChannelsForFidWithCache(fid) {
     // Store fetched data in cache with a timestamp
     cache.set(fid, { channels, timestamp: Date.now() });
 
-    return channels;
+    return channels.slice(start, start + limit);
   } catch (error) {
     console.error('Error during fetchChannelsForFid:', error);
     throw error;
