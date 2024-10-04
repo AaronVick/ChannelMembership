@@ -1,5 +1,11 @@
 import fetch from 'node-fetch';
 
+// Create an in-memory cache to store session data
+const cache = new Map();
+
+// Helper function to introduce a delay
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
 export default async function handler(req, res) {
   console.log('Channels Web Viewer accessed');
 
@@ -12,9 +18,9 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Fetch all channels followed by the provided FID
+    // Fetch channels with caching mechanism
     console.log(`Fetching channels followed by FID: ${fid}`);
-    const channels = await fetchChannelsForFid(fid);
+    const channels = await fetchChannelsForFidWithCache(fid);
 
     if (!channels || channels.length === 0) {
       console.error('No channels found for this FID.');
@@ -98,10 +104,27 @@ export default async function handler(req, res) {
   }
 }
 
-// Fetch channels followed by the given FID, with pagination handling
-async function fetchChannelsForFid(fid) {
+// Fetch channels followed by the given FID, with caching
+async function fetchChannelsForFidWithCache(fid) {
+  // Check if data is in the cache and hasn't expired
+  if (cache.has(fid)) {
+    const cachedData = cache.get(fid);
+    const now = Date.now();
+
+    // If cache is less than 5 minutes old, return it
+    if (now - cachedData.timestamp < 5 * 60 * 1000) {
+      console.log(`Returning cached data for FID: ${fid}`);
+      return cachedData.channels;
+    }
+
+    // If cache is expired, remove it
+    cache.delete(fid);
+  }
+
+  // If no cache or expired, fetch data from API
   let channels = [];
   let nextCursor = null;
+  let retries = 0;
 
   try {
     do {
@@ -115,6 +138,14 @@ async function fetchChannelsForFid(fid) {
       console.log(`Making request to Farcaster API: ${url}`);
 
       const response = await fetch(url);
+
+      // Handle rate-limiting (HTTP 429) by retrying with a delay
+      if (response.status === 429 && retries < 3) {
+        retries++;
+        console.warn(`Rate limited. Retrying after delay... (${retries})`);
+        await delay(1000 * retries); // Exponential backoff: 1s, 2s, 3s
+        continue;
+      }
 
       if (!response.ok) {
         console.error(`Farcaster API returned an error: ${response.status} ${response.statusText}`);
@@ -137,6 +168,9 @@ async function fetchChannelsForFid(fid) {
 
     } while (nextCursor); // Continue fetching until no more pages
 
+    // Store fetched data in cache with a timestamp
+    cache.set(fid, { channels, timestamp: Date.now() });
+
     return channels;
   } catch (error) {
     console.error('Error during fetchChannelsForFid:', error);
@@ -151,6 +185,13 @@ async function checkMembershipStatus(fid, channelId) {
     console.log(`Checking membership status for channelId: ${channelId}, fid: ${fid}`);
 
     const response = await fetch(url);
+
+    // Handle rate-limiting (HTTP 429) by retrying with a delay
+    if (response.status === 429) {
+      console.warn(`Rate limited when checking membership for channelId: ${channelId}. Retrying after delay...`);
+      await delay(1000); // Wait for 1 second before retrying
+      return checkMembershipStatus(fid, channelId); // Retry
+    }
 
     if (!response.ok) {
       console.error(`Farcaster API returned an error: ${response.status} ${response.statusText}`);
