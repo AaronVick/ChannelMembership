@@ -1,4 +1,4 @@
-import fetch from 'node-fetch'; // If you need to fetch external APIs
+import fetch from 'node-fetch';
 
 export default async function handler(req, res) {
   console.log('Channels Web Viewer accessed');
@@ -11,8 +11,21 @@ export default async function handler(req, res) {
   }
 
   try {
-    const channels = await fetchChannelsForFid(fid);
-    const channelsList = channels.map(channel => `<li>${channel.name}</li>`).join('<hr/>');
+    // Logging FID and API call URL
+    console.log(`Fetching channels for FID: ${fid}`);
+    const response = await fetch(`https://api.warpcast.com/fc/channel-members?fid=${fid}`);
+
+    // Checking for non-200 response
+    if (!response.ok) {
+      console.error(`Error from API: ${response.status} ${response.statusText}`);
+      return res.status(500).json({ error: `Error from Farcaster API: ${response.status} ${response.statusText}` });
+    }
+
+    const data = await response.json();
+    console.log('Data fetched from Farcaster API:', data);
+
+    const channels = data.result.members; // Adjust as needed to match API response structure
+    const channelsList = channels.map(channel => `<li>${channel.fid}</li>`).join('<hr/>');
 
     const html = `
       <!DOCTYPE html>
@@ -37,10 +50,4 @@ export default async function handler(req, res) {
     console.error('Error fetching channels:', error);
     return res.status(500).json({ error: 'Error fetching channels' });
   }
-}
-
-async function fetchChannelsForFid(fid) {
-  const response = await fetch(`https://api.warpcast.com/fc/channel-members?fid=${fid}`);
-  const data = await response.json();
-  return data.result.members; // Adjust as needed to match the API structure
 }
