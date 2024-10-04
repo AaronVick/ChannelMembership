@@ -15,8 +15,21 @@ export default async function handler(req, res) {
     // Generate the auth token
     const authToken = await generateAuthToken();
 
+    // Log that we are about to fetch channels
+    console.log(`Fetching channels for FID: ${fid}`);
+
+    // Fetch the channels with proper error handling
     const channels = await fetchChannelsForFid(fid, authToken);
-    const channelsList = channels.map(channel => `<li>${channel.name}</li>`).join('<hr/>');
+
+    if (!channels || channels.length === 0) {
+      console.error('No channels found for this FID.');
+      return res.status(404).json({ error: 'No channels found for the given FID.' });
+    }
+
+    // Log the fetched channels
+    console.log('Fetched channels:', channels);
+
+    const channelsList = channels.map(channel => `<li>${channel.fid}</li>`).join('<hr/>');
 
     const html = `
       <!DOCTYPE html>
@@ -39,21 +52,47 @@ export default async function handler(req, res) {
     res.status(200).send(html);
   } catch (error) {
     console.error('Error fetching channels:', error);
-    return res.status(500).json({ error: 'Error fetching channels' });
+    return res.status(500).json({ error: 'Error fetching channels. Check logs for more details.' });
   }
 }
 
 async function fetchChannelsForFid(fid, authToken) {
-  const response = await fetch(`https://api.warpcast.com/fc/channel-members?fid=${fid}`, {
-    headers: {
-      'Authorization': `Bearer ${authToken}`
+  try {
+    const url = `https://api.warpcast.com/fc/channel-members?fid=${fid}`;
+
+    // Log the API request
+    console.log(`Making request to Farcaster API: ${url}`);
+
+    const response = await fetch(url, {
+      headers: {
+        'Authorization': `Bearer ${authToken}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    // Check for response errors
+    if (!response.ok) {
+      console.error(`Farcaster API returned an error: ${response.status} ${response.statusText}`);
+      throw new Error(`Farcaster API error: ${response.status} ${response.statusText}`);
     }
-  });
-  const data = await response.json();
-  return data.result.members;
+
+    // Parse and log the response data
+    const data = await response.json();
+    console.log('Farcaster API response data:', data);
+
+    // Check if the expected structure exists
+    if (!data.result || !data.result.members) {
+      console.error('Invalid API response structure:', data);
+      throw new Error('Farcaster API did not return expected result.members structure.');
+    }
+
+    return data.result.members;
+  } catch (error) {
+    console.error('Error during fetchChannelsForFid:', error);
+    throw error;
+  }
 }
 
-// Reuse the generateAuthToken function from channels.js
 async function generateAuthToken() {
   const { NobleEd25519Signer } = require('@farcaster/hub-nodejs');
   const fid = process.env.WARPCAST_FID;
@@ -64,6 +103,8 @@ async function generateAuthToken() {
     privateKey = privateKey.slice(2);
   }
 
+  console.log('Generating auth token with FID:', fid);
+
   const signer = new NobleEd25519Signer(privateKey);
   const header = { fid, type: 'app_key', key: privateKey };
   const encodedHeader = Buffer.from(JSON.stringify(header)).toString('base64url');
@@ -71,6 +112,8 @@ async function generateAuthToken() {
   const encodedPayload = Buffer.from(JSON.stringify(payload)).toString('base64url');
   const signatureResult = await signer.signMessageHash(Buffer.from(`${encodedHeader}.${encodedPayload}`, 'utf-8'));
   const encodedSignature = Buffer.from(signatureResult.value).toString("base64url");
+
+  console.log('Auth token generated successfully.');
 
   return `${encodedHeader}.${encodedPayload}.${encodedSignature}`;
 }
