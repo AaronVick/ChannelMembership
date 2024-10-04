@@ -9,7 +9,7 @@ const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 export default async function handler(req, res) {
   console.log('Channels Web Viewer accessed');
 
-  const { fid, cursor, channelId } = req.query;
+  const { fid, cursor, channelName } = req.query;
   const limit = 50; // Limit to avoid API rate-limiting and timeouts
   const start = cursor ? parseInt(cursor, 10) : 0; // Handle pagination with cursor
 
@@ -29,11 +29,16 @@ export default async function handler(req, res) {
 
     const sortedChannels = channels.sort((a, b) => b.followerCount - a.followerCount);
 
-    // Manual membership check if `channelId` is passed in query
+    // Manual membership check if `channelName` is passed in query
     let membershipCheck = '';
-    if (channelId) {
-      const isMember = await checkIfMember(channelId, fid);
-      membershipCheck = `<p><strong>Membership Status for Channel ${channelId}:</strong> ${isMember ? 'You are a member.' : 'You are not a member.'}</p>`;
+    if (channelName) {
+      const channelId = await getChannelIdByName(channelName);
+      if (channelId) {
+        const isMember = await checkIfMember(channelId, fid);
+        membershipCheck = `<p><strong>Membership Status for Channel "${channelName}":</strong> ${isMember ? 'You are a member.' : 'You are not a member.'}</p>`;
+      } else {
+        membershipCheck = `<p><strong>Error:</strong> Channel "${channelName}" not found.</p>`;
+      }
     }
 
     // Generate channel grid
@@ -45,7 +50,7 @@ export default async function handler(req, res) {
           <p>${channel.description || 'No description available'}</p>
           <p><strong>Followers:</strong> ${channel.followerCount}</p>
           <p><strong>Created at:</strong> ${new Date(channel.createdAt * 1000).toLocaleDateString()}</p>
-          <a href="/api/viewChannels?fid=${fid}&channelId=${channel.id}">Check if you're a member</a>
+          <a href="/api/viewChannels?fid=${fid}&channelName=${channel.name}">Check if you're a member</a>
         </div>
         <hr/>
       `
@@ -105,7 +110,7 @@ export default async function handler(req, res) {
 
         <form method="GET" action="/api/viewChannels">
           <input type="hidden" name="fid" value="${fid}" />
-          <input type="text" name="channelId" placeholder="Enter Channel ID to Check Membership" />
+          <input type="text" name="channelName" placeholder="Enter Channel Name to Check Membership" />
           <button type="submit">Check Membership</button>
         </form>
 
@@ -160,6 +165,24 @@ async function fetchChannelsForFidWithCache(fid, limit, start) {
   } catch (error) {
     console.error('Error during fetchChannelsForFid:', error);
     throw error;
+  }
+}
+
+// Look up a channel ID by its name
+async function getChannelIdByName(channelName) {
+  try {
+    const url = `https://api.warpcast.com/v2/all-channels`;
+    console.log(`Fetching all channels to look up ID for: ${channelName}`);
+
+    const response = await fetch(url);
+    const data = await response.json();
+
+    const channel = data.result.channels.find((ch) => ch.name.toLowerCase() === channelName.toLowerCase());
+
+    return channel ? channel.id : null;
+  } catch (error) {
+    console.error('Error during channel lookup:', error);
+    return null;
   }
 }
 
