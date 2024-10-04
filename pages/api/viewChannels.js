@@ -21,18 +21,31 @@ export default async function handler(req, res) {
       return res.status(404).json({ error: 'No channels found for the given FID.' });
     }
 
-    console.log('Fetched channels:', channels);
+    // Check if the user is a member of each channel
+    console.log(`Checking membership for FID: ${fid}`);
+    const membershipInfo = await Promise.all(
+      channels.map(async (channel) => {
+        const isMember = await checkMembershipStatus(fid, channel.id);
+        return { ...channel, isMember };
+      })
+    );
+
+    // Sort channels by membership status (members first)
+    const sortedChannels = membershipInfo.sort((a, b) => (b.isMember ? 1 : 0) - (a.isMember ? 1 : 0));
 
     // Build the HTML content with a nice layout
-    const channelsList = channels.map(channel => `
-      <div class="channel-card">
-        <h2>${channel.name}</h2>
-        <p>${channel.description || 'No description available'}</p>
-        <p><strong>Followers:</strong> ${channel.followerCount}</p>
-        <p><strong>Created at:</strong> ${new Date(channel.createdAt * 1000).toLocaleDateString()}</p>
-      </div>
-      <hr/>
-    `).join('');
+    const channelsList = sortedChannels
+      .map((channel) => `
+        <div class="channel-card">
+          <h2>${channel.name}</h2>
+          <p>${channel.description || 'No description available'}</p>
+          <p><strong>Followers:</strong> ${channel.followerCount}</p>
+          <p><strong>Created at:</strong> ${new Date(channel.createdAt * 1000).toLocaleDateString()}</p>
+          <p><strong>Membership Status:</strong> ${channel.isMember ? 'Member' : 'Not a Member'}</p>
+        </div>
+        <hr/>
+      `)
+      .join('');
 
     const html = `
       <!DOCTYPE html>
@@ -110,5 +123,28 @@ async function fetchChannelsForFid(fid) {
   } catch (error) {
     console.error('Error during fetchChannelsForFid:', error);
     throw error;
+  }
+}
+
+// Check membership status for the given FID and channelId
+async function checkMembershipStatus(fid, channelId) {
+  try {
+    const url = `https://api.warpcast.com/fc/channel-members?channelId=${channelId}&fid=${fid}`;
+    console.log(`Checking membership status for channelId: ${channelId}, fid: ${fid}`);
+
+    const response = await fetch(url);
+
+    if (!response.ok) {
+      console.error(`Farcaster API returned an error: ${response.status} ${response.statusText}`);
+      throw new Error(`Farcaster API error: ${response.status} ${response.statusText}`);
+    }
+
+    const data = await response.json();
+
+    // If the FID is found in the members list, return true for membership
+    return data.result.members && data.result.members.some((member) => member.fid === parseInt(fid, 10));
+  } catch (error) {
+    console.error(`Error checking membership for channelId: ${channelId}`, error);
+    return false; // In case of error, default to not a member
   }
 }
