@@ -3,50 +3,53 @@ import fetch from 'node-fetch';
 // In-memory cache for session data
 const cache = new Map();
 
-// Helper function to introduce a delay
+// Helper function to introduce a delay (in case of rate-limiting)
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export default async function handler(req, res) {
   console.log('Channels Web Viewer accessed');
 
-  const { fid, cursor } = req.query;
+  const { fid, cursor, channelId } = req.query;
   const limit = 50; // Limit to avoid API rate-limiting and timeouts
   const start = cursor ? parseInt(cursor, 10) : 0; // Handle pagination with cursor
 
-  // Validate that fid is provided
   if (!fid) {
     console.error('FID not provided');
     return res.status(400).json({ error: 'FID is required' });
   }
 
   try {
-    // Fetch channels followed by the given FID and limit the number of API requests
     console.log(`Fetching channels followed by FID: ${fid}, start: ${start}`);
+
     const channels = await fetchChannelsForFidWithCache(fid, limit, start);
 
     if (!channels || channels.length === 0) {
-      console.error('No channels found for this FID.');
       return res.status(404).json({ error: 'No channels found for the given FID.' });
     }
 
-    // Sort channels by membership if possible (check if there's a key for membership)
-    const sortedChannels = channels.sort((a, b) => (b.isMember ? 1 : 0) - (a.isMember ? 1 : 0));
+    const sortedChannels = channels.sort((a, b) => b.followerCount - a.followerCount);
 
-    // Output raw JSON for testing purposes
-    const rawJsonOutput = JSON.stringify(channels, null, 2);
+    // Manual membership check if `channelId` is passed in query
+    let membershipCheck = '';
+    if (channelId) {
+      const isMember = await checkIfMember(channelId, fid);
+      membershipCheck = `<p><strong>Membership Status for Channel ${channelId}:</strong> ${isMember ? 'You are a member.' : 'You are not a member.'}</p>`;
+    }
 
-    // Generate HTML response
+    // Generate channel grid
     const channelsList = sortedChannels
-      .map((channel) => `
+      .map(
+        (channel) => `
         <div class="channel-card">
           <h2>${channel.name}</h2>
           <p>${channel.description || 'No description available'}</p>
           <p><strong>Followers:</strong> ${channel.followerCount}</p>
           <p><strong>Created at:</strong> ${new Date(channel.createdAt * 1000).toLocaleDateString()}</p>
-          <p><strong>Membership Status:</strong> ${channel.isMember ? 'Member' : 'Not a Member'}</p>
+          <a href="/api/viewChannels?fid=${fid}&channelId=${channel.id}">Check if you're a member</a>
         </div>
         <hr/>
-      `)
+      `
+      )
       .join('');
 
     const nextCursor = start + limit;
@@ -83,18 +86,31 @@ export default async function handler(req, res) {
             border-top: 1px solid #ddd;
             margin: 20px 0;
           }
-          pre {
-            background-color: #f4f4f4;
-            padding: 10px;
-            border-radius: 8px;
-            white-space: pre-wrap;
-            word-wrap: break-word;
+          form {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 20px;
+          }
+          input[type="text"] {
+            padding: 8px;
+            margin-right: 10px;
+          }
+          button {
+            padding: 8px;
           }
         </style>
       </head>
       <body>
         <h1>Channels Followed by FID: ${fid}</h1>
-        <pre>${rawJsonOutput}</pre> <!-- JSON output for testing -->
+
+        <form method="GET" action="/api/viewChannels">
+          <input type="hidden" name="fid" value="${fid}" />
+          <input type="text" name="channelId" placeholder="Enter Channel ID to Check Membership" />
+          <button type="submit">Check Membership</button>
+        </form>
+
+        ${membershipCheck}
+        
         <div class="channel-list">
           ${channelsList}
         </div>
@@ -113,62 +129,55 @@ export default async function handler(req, res) {
 
 // Fetch channels followed by the given FID with caching and pagination
 async function fetchChannelsForFidWithCache(fid, limit, start) {
-  // Check if data is in the cache and hasn't expired
   if (cache.has(fid)) {
     const cachedData = cache.get(fid);
     const now = Date.now();
 
-    // If cache is less than 5 minutes old, return it
     if (now - cachedData.timestamp < 5 * 60 * 1000) {
       console.log(`Returning cached data for FID: ${fid}`);
       return cachedData.channels.slice(start, start + limit);
     }
 
-    // If cache is expired, remove it
     cache.delete(fid);
   }
 
-  // If no cache or expired, fetch data from API
   let channels = [];
-  let retries = 0;
-
   try {
     let url = `https://api.warpcast.com/v1/user-following-channels?fid=${fid}&limit=${limit}&start=${start}`;
 
     console.log(`Making request to Farcaster API: ${url}`);
-
     const response = await fetch(url);
 
-    // Handle rate-limiting (HTTP 429) by retrying with a delay
-    if (response.status === 429 && retries < 3) {
-      retries++;
-      console.warn(`Rate limited. Retrying after delay... (${retries})`);
-      await delay(1000 * retries); // Exponential backoff: 1s, 2s, 3s
-      return fetchChannelsForFidWithCache(fid, limit, start); // Retry
-    }
-
     if (!response.ok) {
-      console.error(`Farcaster API returned an error: ${response.status} ${response.statusText}`);
       throw new Error(`Farcaster API error: ${response.status} ${response.statusText}`);
     }
 
     const data = await response.json();
-    console.log('Farcaster API response data:', data);
-
-    if (!data.result || !data.result.channels) {
-      console.error('Invalid API response structure:', data);
-      throw new Error('Farcaster API did not return expected result.channels structure.');
-    }
-
-    // Collect the channels from the response
     channels = data.result.channels;
 
-    // Store fetched data in cache with a timestamp
     cache.set(fid, { channels, timestamp: Date.now() });
-
     return channels.slice(start, start + limit);
   } catch (error) {
     console.error('Error during fetchChannelsForFid:', error);
     throw error;
+  }
+}
+
+// Check if the user is a member of the given channel
+async function checkIfMember(channelId, fid) {
+  try {
+    const url = `https://api.warpcast.com/fc/channel-members?channelId=${channelId}&fid=${fid}`;
+    console.log(`Making membership request to Farcaster API: ${url}`);
+
+    const response = await fetch(url);
+    const data = await response.json();
+
+    if (data.result && data.result.members && data.result.members.length > 0) {
+      return true;
+    }
+    return false;
+  } catch (error) {
+    console.error('Error during membership check:', error);
+    return false;
   }
 }
