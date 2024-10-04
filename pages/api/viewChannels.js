@@ -57,7 +57,12 @@ async function fetchChannelsForFid(fid, authToken) {
 async function generateAuthToken() {
   const { NobleEd25519Signer } = require('@farcaster/hub-nodejs');
   const fid = process.env.WARPCAST_FID;
-  const privateKey = process.env.WARPCAST_PRIVATE_KEY;
+  let privateKey = process.env.WARPCAST_PRIVATE_KEY;
+
+  // Remove the 0x prefix from the private key if it exists
+  if (privateKey.startsWith('0x')) {
+    privateKey = privateKey.slice(2);
+  }
 
   const signer = new NobleEd25519Signer(privateKey);
   const header = { fid, type: 'app_key', key: privateKey };
