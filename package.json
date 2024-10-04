@@ -1,17 +1,17 @@
 {
-    "name": "farcaster-channel-list",
-    "version": "1.0.0",
-    "scripts": {
-      "build": "next build",
-      "start": "next start",
-      "dev": "next dev"
-    },
-    "dependencies": {
-      "next": "latest",
-      "react": "latest",
-      "react-dom": "latest",
-      "node-fetch": "^2.6.1",
-      "@vercel/og": "latest"
-    }
+  "name": "farcaster-channel-list",
+  "version": "1.0.0",
+  "scripts": {
+    "build": "next build",
+    "start": "next start",
+    "dev": "next dev"
+  },
+  "dependencies": {
+    "@farcaster/hub-nodejs": "^0.12.4",
+    "@vercel/og": "latest",
+    "next": "latest",
+    "node-fetch": "^2.6.1",
+    "react": "latest",
+    "react-dom": "latest"
   }
-  
+}

@@ -1,4 +1,5 @@
 import fetch from 'node-fetch';
+import { NobleEd25519Signer } from '@farcaster/hub-nodejs';
 
 export default async function handler(req, res) {
   console.log('Channels Web Viewer accessed');
@@ -11,21 +12,11 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Logging FID and API call URL
-    console.log(`Fetching channels for FID: ${fid}`);
-    const response = await fetch(`https://api.warpcast.com/fc/channel-members?fid=${fid}`);
+    // Generate the auth token
+    const authToken = await generateAuthToken();
 
-    // Checking for non-200 response
-    if (!response.ok) {
-      console.error(`Error from API: ${response.status} ${response.statusText}`);
-      return res.status(500).json({ error: `Error from Farcaster API: ${response.status} ${response.statusText}` });
-    }
-
-    const data = await response.json();
-    console.log('Data fetched from Farcaster API:', data);
-
-    const channels = data.result.members; // Adjust as needed to match API response structure
-    const channelsList = channels.map(channel => `<li>${channel.fid}</li>`).join('<hr/>');
+    const channels = await fetchChannelsForFid(fid, authToken);
+    const channelsList = channels.map(channel => `<li>${channel.name}</li>`).join('<hr/>');
 
     const html = `
       <!DOCTYPE html>
@@ -50,4 +41,31 @@ export default async function handler(req, res) {
     console.error('Error fetching channels:', error);
     return res.status(500).json({ error: 'Error fetching channels' });
   }
+}
+
+async function fetchChannelsForFid(fid, authToken) {
+  const response = await fetch(`https://api.warpcast.com/fc/channel-members?fid=${fid}`, {
+    headers: {
+      'Authorization': `Bearer ${authToken}`
+    }
+  });
+  const data = await response.json();
+  return data.result.members;
+}
+
+// Reuse the generateAuthToken function from channels.js
+async function generateAuthToken() {
+  const { NobleEd25519Signer } = require('@farcaster/hub-nodejs');
+  const fid = process.env.WARPCAST_FID;
+  const privateKey = process.env.WARPCAST_PRIVATE_KEY;
+
+  const signer = new NobleEd25519Signer(privateKey);
+  const header = { fid, type: 'app_key', key: privateKey };
+  const encodedHeader = Buffer.from(JSON.stringify(header)).toString('base64url');
+  const payload = { exp: Math.floor(Date.now() / 1000) + 300 }; // Expires in 5 minutes
+  const encodedPayload = Buffer.from(JSON.stringify(payload)).toString('base64url');
+  const signatureResult = await signer.signMessageHash(Buffer.from(`${encodedHeader}.${encodedPayload}`, 'utf-8'));
+  const encodedSignature = Buffer.from(signatureResult.value).toString("base64url");
+
+  return `${encodedHeader}.${encodedPayload}.${encodedSignature}`;
 }
