@@ -1,17 +1,16 @@
 import fetch from 'node-fetch';
 
-// In-memory cache for the session data
+// In-memory cache for session data
 const cache = new Map();
 
 // Helper function to introduce a delay
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// Function to fetch the channels the user follows
 export default async function handler(req, res) {
   console.log('Channels Web Viewer accessed');
 
   const { fid, cursor } = req.query;
-  const limit = 50; // Limit to avoid API rate limiting and timeout
+  const limit = 50; // Limit to avoid API rate-limiting and timeouts
   const start = cursor ? parseInt(cursor, 10) : 0; // Handle pagination with cursor
 
   // Validate that fid is provided
@@ -30,16 +29,8 @@ export default async function handler(req, res) {
       return res.status(404).json({ error: 'No channels found for the given FID.' });
     }
 
-    // Check membership for a limited number of channels
-    const membershipInfo = await Promise.all(
-      channels.map(async (channel) => {
-        const isMember = await checkMembershipStatus(fid, channel.id);
-        return { ...channel, isMember };
-      })
-    );
-
-    // Sort channels by membership status
-    const sortedChannels = membershipInfo.sort((a, b) => (b.isMember ? 1 : 0) - (a.isMember ? 1 : 0));
+    // Check if membership data is already present in the API response and sort based on membership
+    const sortedChannels = channels.sort((a, b) => (b.isMember ? 1 : 0) - (a.isMember ? 1 : 0));
 
     // Generate HTML response
     const channelsList = sortedChannels
@@ -132,65 +123,18 @@ async function fetchChannelsForFidWithCache(fid, limit, start) {
   let retries = 0;
 
   try {
-    do {
-      let url = `https://api.warpcast.com/v1/user-following-channels?fid=${fid}&limit=${limit}&start=${start}`;
+    let url = `https://api.warpcast.com/v1/user-following-channels?fid=${fid}&limit=${limit}&start=${start}`;
 
-      console.log(`Making request to Farcaster API: ${url}`);
-
-      const response = await fetch(url);
-
-      // Handle rate-limiting (HTTP 429) by retrying with a delay
-      if (response.status === 429 && retries < 3) {
-        retries++;
-        console.warn(`Rate limited. Retrying after delay... (${retries})`);
-        await delay(1000 * retries); // Exponential backoff: 1s, 2s, 3s
-        continue;
-      }
-
-      if (!response.ok) {
-        console.error(`Farcaster API returned an error: ${response.status} ${response.statusText}`);
-        throw new Error(`Farcaster API error: ${response.status} ${response.statusText}`);
-      }
-
-      const data = await response.json();
-      console.log('Farcaster API response data:', data);
-
-      if (!data.result || !data.result.channels) {
-        console.error('Invalid API response structure:', data);
-        throw new Error('Farcaster API did not return expected result.channels structure.');
-      }
-
-      // Collect the channels from this page
-      channels = channels.concat(data.result.channels);
-
-      // Check if there are more pages to fetch
-      nextCursor = data.next?.cursor;
-
-    } while (nextCursor); // Continue fetching until no more pages
-
-    // Store fetched data in cache with a timestamp
-    cache.set(fid, { channels, timestamp: Date.now() });
-
-    return channels.slice(start, start + limit);
-  } catch (error) {
-    console.error('Error during fetchChannelsForFid:', error);
-    throw error;
-  }
-}
-
-// Check membership status for the given FID and channelId
-async function checkMembershipStatus(fid, channelId) {
-  try {
-    const url = `https://api.warpcast.com/fc/channel-members?channelId=${channelId}&fid=${fid}`;
-    console.log(`Checking membership status for channelId: ${channelId}, fid: ${fid}`);
+    console.log(`Making request to Farcaster API: ${url}`);
 
     const response = await fetch(url);
 
     // Handle rate-limiting (HTTP 429) by retrying with a delay
-    if (response.status === 429) {
-      console.warn(`Rate limited when checking membership for channelId: ${channelId}. Retrying after delay...`);
-      await delay(1000); // Wait for 1 second before retrying
-      return checkMembershipStatus(fid, channelId); // Retry
+    if (response.status === 429 && retries < 3) {
+      retries++;
+      console.warn(`Rate limited. Retrying after delay... (${retries})`);
+      await delay(1000 * retries); // Exponential backoff: 1s, 2s, 3s
+      return fetchChannelsForFidWithCache(fid, limit, start); // Retry
     }
 
     if (!response.ok) {
@@ -199,11 +143,22 @@ async function checkMembershipStatus(fid, channelId) {
     }
 
     const data = await response.json();
+    console.log('Farcaster API response data:', data);
 
-    // If the FID is found in the members list, return true for membership
-    return data.result.members && data.result.members.some((member) => member.fid === parseInt(fid, 10));
+    if (!data.result || !data.result.channels) {
+      console.error('Invalid API response structure:', data);
+      throw new Error('Farcaster API did not return expected result.channels structure.');
+    }
+
+    // Collect the channels from the response
+    channels = data.result.channels;
+
+    // Store fetched data in cache with a timestamp
+    cache.set(fid, { channels, timestamp: Date.now() });
+
+    return channels.slice(start, start + limit);
   } catch (error) {
-    console.error(`Error checking membership for channelId: ${channelId}`, error);
-    return false; // In case of error, default to not a member
+    console.error('Error during fetchChannelsForFid:', error);
+    throw error;
   }
 }
