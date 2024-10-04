@@ -109,12 +109,20 @@ async function checkIfMember(channelId, fid) {
 }
 
 // Render the HTML output
-function renderHTML(channels, fid, channelName, res) {
+async function renderHTML(channels, fid, channelName, res) {
   const sortedChannels = channels.sort((a, b) => b.followerCount - a.followerCount);
 
   let membershipCheck = '';
   if (channelName) {
-    membershipCheck = `<p><strong>Membership Status for Channel "${channelName}":</strong> Membership check in progress...</p>`;
+    const channelId = await getChannelIdByName(channelName);
+    if (!channelId) {
+      membershipCheck = `<p><strong>Error:</strong> Channel "${channelName}" not found.</p>`;
+    } else {
+      const isMember = await checkIfMember(channelId, fid);
+      membershipCheck = isMember
+        ? `<p><strong>Membership Status for Channel "${channelName}":</strong> You are a member.</p>`
+        : `<p><strong>Membership Status for Channel "${channelName}":</strong> You are not a member.</p>`;
+    }
   }
 
   const channelsList = sortedChannels
