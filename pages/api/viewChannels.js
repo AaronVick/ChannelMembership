@@ -3,15 +3,10 @@ import fetch from 'node-fetch';
 // In-memory cache for session data
 const cache = new Map();
 
-// Helper function to introduce a delay (in case of rate-limiting)
-const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
 export default async function handler(req, res) {
   console.log('Channels Web Viewer accessed');
 
-  const { fid, cursor, channelName } = req.query;
-  const limit = 50; // Limit to avoid API rate-limiting and timeouts
-  const start = cursor ? parseInt(cursor, 10) : 0; // Handle pagination with cursor
+  const { fid, channelName } = req.query;
 
   if (!fid) {
     console.error('FID not provided');
@@ -19,9 +14,10 @@ export default async function handler(req, res) {
   }
 
   try {
-    console.log(`Fetching channels followed by FID: ${fid}, start: ${start}`);
+    console.log(`Fetching channels followed by FID: ${fid}`);
 
-    const channels = await fetchChannelsForFidWithCache(fid, limit, start);
+    // Fetch all channels for the given FID with pagination
+    const channels = await fetchAllChannelsForFid(fid);
 
     if (!channels || channels.length === 0) {
       return res.status(404).json({ error: 'No channels found for the given FID.' });
@@ -56,8 +52,6 @@ export default async function handler(req, res) {
       `
       )
       .join('');
-
-    const nextCursor = start + limit;
 
     const html = `
       <!DOCTYPE html>
@@ -119,7 +113,6 @@ export default async function handler(req, res) {
         <div class="channel-list">
           ${channelsList}
         </div>
-        ${channels.length >= limit ? `<a href="/api/viewChannels?fid=${fid}&cursor=${nextCursor}">Next Page</a>` : ''}
       </body>
       </html>
     `;
@@ -132,36 +125,34 @@ export default async function handler(req, res) {
   }
 }
 
-// Fetch channels followed by the given FID with caching and pagination
-async function fetchChannelsForFidWithCache(fid, limit, start) {
-  if (cache.has(fid)) {
-    const cachedData = cache.get(fid);
-    const now = Date.now();
+// Fetch all channels followed by the given FID with pagination handling
+async function fetchAllChannelsForFid(fid) {
+  let allChannels = [];
+  let cursor = null;
 
-    if (now - cachedData.timestamp < 5 * 60 * 1000) {
-      console.log(`Returning cached data for FID: ${fid}`);
-      return cachedData.channels.slice(start, start + limit);
-    }
-
-    cache.delete(fid);
-  }
-
-  let channels = [];
   try {
-    let url = `https://api.warpcast.com/v1/user-following-channels?fid=${fid}&limit=${limit}&start=${start}`;
+    do {
+      const url = cursor
+        ? `https://api.warpcast.com/v1/user-following-channels?fid=${fid}&cursor=${cursor}`
+        : `https://api.warpcast.com/v1/user-following-channels?fid=${fid}`;
+      console.log(`Making request to Farcaster API: ${url}`);
+      const response = await fetch(url);
 
-    console.log(`Making request to Farcaster API: ${url}`);
-    const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`Farcaster API error: ${response.status} ${response.statusText}`);
+      }
 
-    if (!response.ok) {
-      throw new Error(`Farcaster API error: ${response.status} ${response.statusText}`);
-    }
+      const data = await response.json();
+      const channels = data.result.channels || [];
+      allChannels = allChannels.concat(channels);
 
-    const data = await response.json();
-    channels = data.result.channels;
+      cursor = data.next ? data.next.cursor : null;
 
-    cache.set(fid, { channels, timestamp: Date.now() });
-    return channels.slice(start, start + limit);
+      // Delay to avoid rate-limiting
+      await delay(1000);
+    } while (cursor);
+
+    return allChannels;
   } catch (error) {
     console.error('Error during fetchChannelsForFid:', error);
     throw error;
@@ -204,3 +195,6 @@ async function checkIfMember(channelId, fid) {
     return false;
   }
 }
+
+// Helper function to introduce a delay (in case of rate-limiting)
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
