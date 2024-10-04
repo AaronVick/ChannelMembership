@@ -29,8 +29,11 @@ export default async function handler(req, res) {
       return res.status(404).json({ error: 'No channels found for the given FID.' });
     }
 
-    // Check if membership data is already present in the API response and sort based on membership
+    // Sort channels by membership if possible (check if there's a key for membership)
     const sortedChannels = channels.sort((a, b) => (b.isMember ? 1 : 0) - (a.isMember ? 1 : 0));
+
+    // Output raw JSON for testing purposes
+    const rawJsonOutput = JSON.stringify(channels, null, 2);
 
     // Generate HTML response
     const channelsList = sortedChannels
@@ -80,10 +83,18 @@ export default async function handler(req, res) {
             border-top: 1px solid #ddd;
             margin: 20px 0;
           }
+          pre {
+            background-color: #f4f4f4;
+            padding: 10px;
+            border-radius: 8px;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+          }
         </style>
       </head>
       <body>
         <h1>Channels Followed by FID: ${fid}</h1>
+        <pre>${rawJsonOutput}</pre> <!-- JSON output for testing -->
         <div class="channel-list">
           ${channelsList}
         </div>
@@ -119,7 +130,6 @@ async function fetchChannelsForFidWithCache(fid, limit, start) {
 
   // If no cache or expired, fetch data from API
   let channels = [];
-  let nextCursor = null;
   let retries = 0;
 
   try {
