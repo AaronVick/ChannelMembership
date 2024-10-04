@@ -112,33 +112,38 @@ async function checkIfMember(channelId, fid) {
 async function renderHTML(channels, fid, channelName, res) {
   const sortedChannels = channels.sort((a, b) => b.followerCount - a.followerCount);
 
-  let membershipCheck = '';
-  if (channelName) {
-    const channelId = await getChannelIdByName(channelName);
-    if (!channelId) {
-      membershipCheck = `<p><strong>Error:</strong> Channel "${channelName}" not found.</p>`;
-    } else {
-      const isMember = await checkIfMember(channelId, fid);
-      membershipCheck = isMember
-        ? `<p><strong>Membership Status for Channel "${channelName}":</strong> You are a member.</p>`
-        : `<p><strong>Membership Status for Channel "${channelName}":</strong> You are not a member.</p>`;
-    }
-  }
+  const channelsList = await Promise.all(
+    sortedChannels.map(async (channel, index) => {
+      let membershipCheck = '';
 
-  const channelsList = sortedChannels
-    .map(
-      (channel) => `
-      <div class="channel-card">
-        <h2>${channel.name}</h2>
-        <p>${channel.description || 'No description available'}</p>
-        <p><strong>Followers:</strong> ${channel.followerCount}</p>
-        <p><strong>Created at:</strong> ${new Date(channel.createdAt * 1000).toLocaleDateString()}</p>
-        <a href="/api/viewChannels?fid=${fid}&channelName=${channel.name}">Check if you're a member</a>
-      </div>
-      <hr/>
-    `
-    )
-    .join('');
+      // If a channel name was provided, check membership
+      if (channelName && channelName.toLowerCase() === channel.name.toLowerCase()) {
+        const channelId = await getChannelIdByName(channelName);
+        if (channelId) {
+          const isMember = await checkIfMember(channelId, fid);
+          membershipCheck = isMember
+            ? `<p><strong>Status:</strong> You are a member.</p>`
+            : `<p><strong>Status:</strong> You are not a member.</p>`;
+        } else {
+          membershipCheck = `<p><strong>Error:</strong> Channel "${channelName}" not found.</p>`;
+        }
+      }
+
+      // Alternate background color between light grey and light purple
+      const bgColor = index % 2 === 0 ? '#f9f9f9' : '#f0e6ff';
+
+      return `
+        <div class="channel-card" style="background-color: ${bgColor}">
+          <h2>${channel.name}</h2>
+          <p>${channel.description || 'No description available'}</p>
+          <p><strong>Followers:</strong> ${channel.followerCount}</p>
+          <p><strong>Created at:</strong> ${new Date(channel.createdAt * 1000).toLocaleDateString()}</p>
+          <a href="/api/viewChannels?fid=${fid}&channelName=${channel.name}">Check if you're a member</a>
+          ${membershipCheck}
+        </div>
+      `;
+    })
+  );
 
   const html = `
     <!DOCTYPE html>
@@ -157,20 +162,14 @@ async function renderHTML(channels, fid, channelName, res) {
         .channel-list {
           display: grid;
           grid-template-columns: 1fr;
-          gap: 20px;
+          gap: 10px;
           max-width: 800px;
           margin: 0 auto;
         }
         .channel-card {
-          padding: 20px;
-          background-color: #f9f9f9;
+          padding: 15px;
           border-radius: 8px;
           box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-        }
-        hr {
-          border: 0;
-          border-top: 1px solid #ddd;
-          margin: 20px 0;
         }
         form {
           display: flex;
@@ -195,10 +194,8 @@ async function renderHTML(channels, fid, channelName, res) {
         <button type="submit">Check Membership</button>
       </form>
 
-      ${membershipCheck}
-      
       <div class="channel-list">
-        ${channelsList}
+        ${channelsList.join('')}
       </div>
     </body>
     </html>
