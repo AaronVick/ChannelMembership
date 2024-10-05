@@ -1,12 +1,12 @@
 {
-    "version": 2,
-    "builds": [
-      { "src": "package.json", "use": "@vercel/next" }
-    ],
-    "routes": [
-      { "src": "/api/channels", "dest": "/api/channels" },
-      { "src": "/api/og", "dest": "/api/og" },
-      { "src": "/(.*)", "dest": "/$1" }
-    ]
-  }
-  
+  "version": 2,
+  "builds": [
+    { "src": "package.json", "use": "@vercel/next" }
+  ],
+  "routes": [
+    { "src": "/api/channels", "dest": "/api/channels" },
+    { "src": "/api/og", "dest": "/api/og" },
+    { "src": "/api/popularFrames", "dest": "/api/popularFrames" },
+    { "src": "/(.*)", "dest": "/$1" }
+  ]
+}
