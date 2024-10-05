@@ -71,137 +71,68 @@ async function fetchAllChannelsForFid(fid) {
   }
 }
 
-// Look up a channel ID by its name
-async function getChannelIdByName(channelName) {
-  try {
-    const url = `https://api.warpcast.com/v2/all-channels`;
-    console.log(`Fetching all channels to look up ID for: ${channelName}`);
+// Render HTML for all channels
+function renderHTML(channels, fid, channelName, res) {
+  const channelListHTML = channels.map((channel, index) => {
+    const alternatingBgColor = index % 2 === 0 ? '#f2f2f2' : '#e6e6ff';
+    
+    // All channel fields displayed
+    return `
+      <div style="background-color: ${alternatingBgColor}; padding: 10px; margin-bottom: 5px;">
+        <h3>${channel.name} (ID: ${channel.id})</h3>
+        <p><strong>Description:</strong> ${channel.description || 'No description available'}</p>
+        <p><strong>Follower Count:</strong> ${channel.followerCount}</p>
+        <p><strong>Member Count:</strong> ${channel.memberCount || 'N/A'}</p>
+        <p><strong>Lead Fid:</strong> ${channel.leadFid}</p>
+        <p><strong>Moderators:</strong> ${channel.moderatorFids.join(', ')}</p>
+        <img src="${channel.imageUrl || ''}" alt="${channel.name}" width="100" height="100"/>
+        <p>
+          <a href="#" onclick="checkMembership('${channel.id}', '${fid}')">Check if you're a member</a>
+          <span id="membership-status-${channel.id}"></span>
+        </p>
+      </div>
+    `;
+  }).join('');
 
-    const response = await fetch(url);
-    const data = await response.json();
-
-    const channel = data.result.channels.find((ch) => ch.name.toLowerCase() === channelName.toLowerCase());
-
-    return channel ? channel.id : null;
-  } catch (error) {
-    console.error('Error during channel lookup:', error);
-    return null;
-  }
-}
-
-// Check if the user is a member of the given channel
-async function checkIfMember(channelId, fid) {
-  try {
-    const url = `https://api.warpcast.com/fc/channel-members?channelId=${channelId}&fid=${fid}`;
-    console.log(`Making membership request to Farcaster API: ${url}`);
-
-    const response = await fetch(url);
-    const data = await response.json();
-
-    if (data.result && data.result.members && data.result.members.length > 0) {
-      return true;
-    }
-    return false;
-  } catch (error) {
-    console.error('Error during membership check:', error);
-    return false;
-  }
-}
-
-// Render the HTML output
-async function renderHTML(channels, fid, channelName, res) {
-  const sortedChannels = channels.sort((a, b) => b.followerCount - a.followerCount);
-
-  const channelsList = await Promise.all(
-    sortedChannels.map(async (channel, index) => {
-      let membershipCheck = '';
-
-      // If a channel name was provided, check membership
-      if (channelName && channelName.toLowerCase() === channel.name.toLowerCase()) {
-        const channelId = await getChannelIdByName(channelName);
-        if (channelId) {
-          const isMember = await checkIfMember(channelId, fid);
-          membershipCheck = isMember
-            ? `<p><strong>Status:</strong> You are a member.</p>`
-            : `<p><strong>Status:</strong> You are not a member.</p>`;
-        } else {
-          membershipCheck = `<p><strong>Error:</strong> Channel "${channelName}" not found.</p>`;
-        }
-      }
-
-      // Alternate background color between light grey and light purple
-      const bgColor = index % 2 === 0 ? '#f9f9f9' : '#f0e6ff';
-
-      return `
-        <div class="channel-card" style="background-color: ${bgColor}">
-          <h2>${channel.name}</h2>
-          <p>${channel.description || 'No description available'}</p>
-          <p><strong>Channel ID:</strong> ${channel.id}</p>
-          <p><strong>Followers:</strong> ${channel.followerCount}</p>
-          <p><strong>Created at:</strong> ${new Date(channel.createdAt * 1000).toLocaleDateString()}</p>
-          <a href="/api/viewChannels?fid=${fid}&channelName=${channel.name}">Check if you're a member</a>
-          ${membershipCheck}
-        </div>
-      `;
-    })
-  );
-
-  const html = `
+  const htmlContent = `
     <!DOCTYPE html>
     <html>
     <head>
-      <title>Channels Followed by FID: ${fid}</title>
+      <meta charset="UTF-8">
+      <title>Channel List for FID ${fid}</title>
       <style>
         body {
           font-family: Arial, sans-serif;
-          margin: 20px;
-          padding: 20px;
         }
-        h1 {
-          text-align: center;
+        h3 {
+          margin: 0;
         }
-        .channel-list {
-          display: grid;
-          grid-template-columns: 1fr;
-          gap: 10px;
-          max-width: 800px;
-          margin: 0 auto;
+        p {
+          margin: 0.2em 0;
         }
-        .channel-card {
-          padding: 15px;
-          border-radius: 8px;
-          box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-        }
-        form {
-          display: flex;
-          justify-content: center;
-          margin-bottom: 20px;
-        }
-        input[type="text"] {
-          padding: 8px;
-          margin-right: 10px;
-        }
-        button {
-          padding: 8px;
+        div {
+          border-bottom: 1px solid #ccc;
         }
       </style>
+      <script>
+        async function checkMembership(channelId, fid) {
+          document.getElementById('membership-status-' + channelId).innerHTML = 'Membership check in progress...';
+          const response = await fetch(\`/api/checkMembership?channelId=\${channelId}&fid=\${fid}\`);
+          const result = await response.json();
+          if (result.isMember) {
+            document.getElementById('membership-status-' + channelId).innerHTML = 'You are a member.';
+          } else {
+            document.getElementById('membership-status-' + channelId).innerHTML = 'You are not a member.';
+          }
+        }
+      </script>
     </head>
     <body>
-      <h1>Channels Followed by FID: ${fid}</h1>
-
-      <form method="GET" action="/api/viewChannels">
-        <input type="hidden" name="fid" value="${fid}" />
-        <input type="text" name="channelName" placeholder="Enter Channel Name to Check Membership" />
-        <button type="submit">Check Membership</button>
-      </form>
-
-      <div class="channel-list">
-        ${channelsList.join('')}
-      </div>
+      <h1>Channels followed by FID: ${fid}</h1>
+      <div>${channelListHTML}</div>
     </body>
     </html>
   `;
 
-  res.setHeader('Content-Type', 'text/html');
-  res.status(200).send(html);
+  return res.status(200).send(htmlContent);
 }
