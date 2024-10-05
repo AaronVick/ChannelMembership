@@ -12,16 +12,21 @@ export default function PopularFrames() {
 
   useEffect(() => {
     if (fid) {
-      setLoading(true); // Set loading state when fetching begins
+      setLoading(true); // Set loading state
       fetch(`/api/popularFrames?fid=${fid}`)
-        .then((response) => response.json())
+        .then((response) => {
+          if (!response.ok) {
+            throw new Error(`Error fetching frames: ${response.statusText}`);
+          }
+          return response.json();
+        })
         .then((data) => {
           if (data.error) {
             setError(data.error);
           } else {
             setFrames(data.frames);
           }
-          setLoading(false); // Stop loading state once data is fetched
+          setLoading(false); // Stop loading state
         })
         .catch((err) => {
           setError(err.message);
@@ -45,7 +50,7 @@ export default function PopularFrames() {
         {frames.length > 0 ? (
           frames.map((frame, index) => (
             <li key={index}>
-              <strong>{frame.frameName}</strong> - {frame.description}
+              <strong>{frame.frameName || frame}</strong>
             </li>
           ))
         ) : (
