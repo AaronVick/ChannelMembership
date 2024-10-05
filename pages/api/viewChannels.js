@@ -136,6 +136,7 @@ async function renderHTML(channels, fid, channelName, res) {
         <div class="channel-card" style="background-color: ${bgColor}">
           <h2>${channel.name}</h2>
           <p>${channel.description || 'No description available'}</p>
+          <p><strong>Channel ID:</strong> ${channel.id}</p>
           <p><strong>Followers:</strong> ${channel.followerCount}</p>
           <p><strong>Created at:</strong> ${new Date(channel.createdAt * 1000).toLocaleDateString()}</p>
           <a href="/api/viewChannels?fid=${fid}&channelName=${channel.name}">Check if you're a member</a>
