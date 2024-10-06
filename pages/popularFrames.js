@@ -1,5 +1,3 @@
-// /pages/popularFrames.js
-
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 
@@ -12,11 +10,11 @@ export default function PopularFrames() {
 
   useEffect(() => {
     if (fid) {
-      setLoading(true); // Set loading state
+      setLoading(true);
       fetch(`/api/popularFrames?fid=${fid}`)
         .then((response) => {
           if (!response.ok) {
-            throw new Error(`Error fetching frames: ${response.statusText}`);
+            return response.json().then(err => { throw new Error(err.error || 'An error occurred while fetching frames') });
           }
           return response.json();
         })
@@ -26,17 +24,18 @@ export default function PopularFrames() {
           } else {
             setFrames(data.frames);
           }
-          setLoading(false); // Stop loading state
         })
         .catch((err) => {
           setError(err.message);
-          setLoading(false); // Stop loading state on error
+        })
+        .finally(() => {
+          setLoading(false);
         });
     }
   }, [fid]);
 
   if (loading) {
-    return <div>Loading...</div>;
+    return <div>Loading popular frames...</div>;
   }
 
   if (error) {
@@ -46,17 +45,19 @@ export default function PopularFrames() {
   return (
     <div>
       <h1>Popular Frames for FID: {fid}</h1>
-      <ul>
-        {frames.length > 0 ? (
-          frames.map((frame, index) => (
+      {frames.length > 0 ? (
+        <ul>
+          {frames.map((frame, index) => (
             <li key={index}>
-              <strong>{frame.frameName || frame}</strong>
+              <strong>{frame.name || `Frame ${index + 1}`}</strong>
+              {frame.url && <p>URL: {frame.url}</p>}
+              {frame.score && <p>Score: {frame.score}</p>}
             </li>
-          ))
-        ) : (
-          <li>No frames found</li>
-        )}
-      </ul>
+          ))}
+        </ul>
+      ) : (
+        <p>No frames found</p>
+      )}
     </div>
   );
 }
