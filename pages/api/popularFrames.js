@@ -57,8 +57,12 @@ export default async function handler(req, res) {
     const frameData = await frameResponse.json();
     console.log('Frames Data:', JSON.stringify(frameData, null, 2));
 
+    if (!frameData || !frameData.result || !Array.isArray(frameData.result)) {
+      throw new Error('Unexpected frame data structure');
+    }
+
     // Send the frames data as JSON response
-    res.status(200).json({ frames: frameData });
+    res.status(200).json({ frames: frameData.result });
 
   } catch (error) {
     console.error('Error in popularFrames API:', error);

@@ -51,10 +51,12 @@ export default function PopularFrames() {
         <ul>
           {frames.map((frame, index) => (
             <li key={index}>
-              <strong>{frame.name || frame.url || `Frame ${index + 1}`}</strong>
-              {frame.url && <p>URL: {frame.url}</p>}
-              {frame.score && <p>Score: {frame.score}</p>}
-              {frame.total_casts && <p>Total Casts: {frame.total_casts}</p>}
+              <h2>Frame {index + 1}</h2>
+              <p><strong>URL:</strong> <a href={frame.url} target="_blank" rel="noopener noreferrer">{frame.url}</a></p>
+              <p><strong>Score:</strong> {frame.score.toFixed(4)}</p>
+              <p><strong>Interacted by FIDs:</strong> {frame.interacted_by_fids.join(', ')}</p>
+              <p><strong>Interacted by FNames:</strong> {frame.interacted_by_fnames.join(', ')}</p>
+              <p><strong>Interacted by Usernames:</strong> {frame.interacted_by_usernames.join(', ')}</p>
             </li>
           ))}
         </ul>
