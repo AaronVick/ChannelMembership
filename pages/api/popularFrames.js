@@ -22,10 +22,17 @@ export default async function handler(req, res) {
       throw new Error(`Error fetching engaged FIDs: ${engagementResponse.statusText}`);
     }
 
-    const engagedFIDs = await engagementResponse.json();
-    console.log('Engaged FIDs:', engagedFIDs);
+    const engagementData = await engagementResponse.json();
+    console.log('Engagement Data:', JSON.stringify(engagementData, null, 2));
 
-    if (!engagedFIDs || engagedFIDs.length === 0) {
+    if (!engagementData || !engagementData.result || !Array.isArray(engagementData.result)) {
+      throw new Error('Unexpected engagement data structure');
+    }
+
+    const engagedFIDs = engagementData.result.map(item => item.fid);
+    console.log('Extracted Engaged FIDs:', engagedFIDs);
+
+    if (engagedFIDs.length === 0) {
       return res.status(404).json({ error: 'No engaged FIDs found' });
     }
 
@@ -48,7 +55,7 @@ export default async function handler(req, res) {
     }
 
     const frameData = await frameResponse.json();
-    console.log('Frames Data:', frameData);
+    console.log('Frames Data:', JSON.stringify(frameData, null, 2));
 
     // Send the frames data as JSON response
     res.status(200).json({ frames: frameData });

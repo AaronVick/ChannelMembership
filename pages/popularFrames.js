@@ -21,8 +21,10 @@ export default function PopularFrames() {
         .then((data) => {
           if (data.error) {
             setError(data.error);
-          } else {
+          } else if (Array.isArray(data.frames)) {
             setFrames(data.frames);
+          } else {
+            setError('Unexpected frame data structure');
           }
         })
         .catch((err) => {
@@ -49,9 +51,10 @@ export default function PopularFrames() {
         <ul>
           {frames.map((frame, index) => (
             <li key={index}>
-              <strong>{frame.name || `Frame ${index + 1}`}</strong>
+              <strong>{frame.name || frame.url || `Frame ${index + 1}`}</strong>
               {frame.url && <p>URL: {frame.url}</p>}
               {frame.score && <p>Score: {frame.score}</p>}
+              {frame.total_casts && <p>Total Casts: {frame.total_casts}</p>}
             </li>
           ))}
         </ul>
