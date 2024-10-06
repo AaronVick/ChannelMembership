@@ -36,6 +36,7 @@ export default async function handler(req, res) {
       throw new Error('No engaged FIDs found');
     }
 
+    // Take top 20 FIDs
     const topFIDs = engagedFIDs.slice(0, 20);
 
     // Debug: Check if FIDs are valid before making the second API call
@@ -52,13 +53,17 @@ export default async function handler(req, res) {
         body: JSON.stringify(topFIDs),  // Pass top FIDs to get frames
       });
 
+      // Log the full response to catch unexpected errors
+      const frameResponseBody = await frameResponse.text();
+      console.log('Frames API Response:', frameResponseBody);
+
       // Check if the frames request was successful
       if (!frameResponse.ok) {
         throw new Error(`Error fetching frames: ${frameResponse.statusText}`);
       }
 
       // Parse the response to get the list of frames
-      const frameData = await frameResponse.json();
+      const frameData = JSON.parse(frameResponseBody);
 
       // Log the frames data to the console for debugging
       console.log('Frames Data:', frameData);
