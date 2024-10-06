@@ -50,7 +50,9 @@ export default async function handler(req, res) {
       }
 
       const currentFrame = frames[frameIndex];
-      const frameImageUrl = currentFrame.url;
+      
+      // Use a placeholder image instead of the frame URL
+      const placeholderImage = `https://placehold.co/600x400?text=${encodeURIComponent(currentFrame.url)}`;
 
       const shareText = encodeURIComponent(`Check out this Farcaster frame: ${currentFrame.url}`);
       const shareLink = `https://warpcast.com/~/compose?text=${shareText}`;
@@ -60,7 +62,7 @@ export default async function handler(req, res) {
         <html>
           <head>
             <meta property="fc:frame" content="vNext" />
-            <meta property="fc:frame:image" content="${frameImageUrl}" />
+            <meta property="fc:frame:image" content="${placeholderImage}" />
             <meta property="fc:frame:button:1" content="${frameIndex > 0 ? 'Previous' : 'Start Over'}" />
             <meta property="fc:frame:button:2" content="Share" />
             <meta property="fc:frame:button:3" content="${frameIndex < frames.length - 1 ? 'Next' : 'Finish'}" />
